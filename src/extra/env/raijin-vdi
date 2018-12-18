@@ -1,0 +1,11 @@
+
+module purge
+
+module load netcdf
+module load intel-fc
+module load openmpi
+
+
+export F90=mpif90
+export CC=mpicc
+
