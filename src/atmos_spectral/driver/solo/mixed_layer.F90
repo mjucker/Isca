@@ -56,6 +56,8 @@ use interpolator_mod, only: interpolate_type,interpolator_init&
      &,CONSTANT,interpolator
 !mj q-flux
 use qflux_mod, only: qflux_init,qflux,warmpool
+!mj local surface heating
+use local_heating_mod, only: horizontal_heating
 
 implicit none
 private
@@ -111,6 +113,7 @@ logical :: specify_sst_over_ocean_only = .false.
 character(len=256) :: sst_file
 character(len=256) :: land_option = 'none'
 real,dimension(10) :: slandlon=0,slandlat=0,elandlon=-1,elandlat=-1
+logical :: do_surface_heating = .false. !mj local heating source
 !s End mj extra options
 
 character(len=256) :: qflux_file_name  = 'ocean_qflux'
@@ -199,6 +202,8 @@ logical, allocatable, dimension(:,:) ::      land_mask
   type(interpolate_type),save :: qflux_interp
   type(interpolate_type),save :: ice_interp
   type(interpolate_type),save :: flux_lhe_anom_interp  
+!mj local heating
+real, dimension(:,:),allocatable :: horiz_heat
 
 real inv_cp_air
 
@@ -280,6 +285,10 @@ allocate(land_sea_heat_capacity  (is:ie, js:je))
 allocate(zsurf                   (is:ie, js:je))
 allocate(sst_new                 (is:ie, js:je))
 allocate(land_mask                 (is:ie, js:je)); land_mask=land
+!mj local heating
+if (do_surface_heating) then
+   allocate(horiz_heat(is:ie, js:je))
+endif
 !
 !see if restart file exists for the surface temperature
 !
@@ -294,6 +303,7 @@ do j=js,je
 enddo
 !mj get lon for land_sea_heat_capacity
 call get_deg_lon(deg_lon)
+   
 
 !s Adding MiMA options
    if(do_sc_sst) do_read_sst = .true.
@@ -678,6 +688,17 @@ if ((.not.do_sc_sst).or.(do_sc_sst.and.specify_sst_over_ocean_only)) then
     endif
 
 endif !s end of if(do_sc_sst).
+
+!mj local surface heating
+if ( do_surface_heating ) then
+   call horizontal_heating(Time,deg_lon,deg_lat,horiz_heat)
+   ! increment surface temperature due to heating source
+   t_surf = t_surf + horiz_heat * dt
+   ! also increment temperature increment
+   delta_t_surf = delta_t_surf + horiz_heat * dt
+else
+   horiz_heat = 0.0 ! for diagnostics output
+endif
 
 !
 ! Finally calculate the increments for the lowest atmospheric layer

@@ -32,7 +32,7 @@ use      dry_convection_mod, only: dry_convection_init, dry_convection
 
 use        diag_manager_mod, only: register_diag_field, send_data
 
-use          transforms_mod, only: get_grid_domain
+use          transforms_mod, only: get_grid_domain,get_deg_lon,get_deg_lat !mj local heating
 
 use   spectral_dynamics_mod, only: get_axis_id, get_num_levels, get_surf_geopotential
 
@@ -66,6 +66,7 @@ use rayleigh_bottom_drag_mod, only: rayleigh_bottom_drag_init, compute_rayleigh_
     use rrtm_vars
 #endif
 
+use local_heating_mod, only: local_heating_init,local_heating
 
 implicit none
 private
@@ -108,6 +109,9 @@ logical :: do_rrtm_radiation = .false.
 !s MiMA uses damping
 logical :: do_damping = .false.
 
+!mj local heating
+logical :: do_local_heating = .false.
+
 
 logical :: mixed_layer_bc = .false.
 logical :: gp_surface = .false. !s Use Schneider & Liu 2009's prescription of lower-boundary heat flux
@@ -142,7 +146,8 @@ namelist / idealized_moist_phys_nml / turb, lwet_convection, do_bm, do_ras, roug
                                       land_roughness_prefactor,               &
                                       gp_surface, convection_scheme,          &
                                       bucket, init_bucket_depth, init_bucket_depth_land, & !RG Add bucket 
-                                      max_bucket_depth_land, robert_bucket, raw_bucket
+                                      max_bucket_depth_land, robert_bucket, raw_bucket, & !mj local heating
+                                      do_local_heating
 
 
 integer, parameter :: num_time_levels = 2 !RG Add bucket - number of time levels added to allow timestepping in this module
@@ -256,6 +261,7 @@ integer ::           &
 
 integer, allocatable, dimension(:,:) :: convflag ! indicates which qe convection subroutines are used
 real,    allocatable, dimension(:,:) :: rad_lat, rad_lon
+real,    allocatable, dimension(:)  :: deg_lon,deg_lat !mj local heating
 real,    allocatable, dimension(:) :: pref, p_half_1d, ln_p_half_1d, p_full_1d,ln_p_full_1d !s pref is a reference pressure profile, which in 2006 MiMA is just the initial full pressure levels, and an extra level with the reference surface pressure. Others are only necessary to calculate pref.
 real,    allocatable, dimension(:,:) :: capeflag !s Added for Betts Miller scheme (rather than the simplified Betts Miller scheme).
 
@@ -480,6 +486,12 @@ allocate(pref(num_levels+1)) !s reference pressure profile, as in spectral_physi
 allocate(p_half_1d(num_levels+1), ln_p_half_1d(num_levels+1))
 allocate(p_full_1d(num_levels  ), ln_p_full_1d(num_levels  ))
 allocate(capeflag     (is:ie, js:je))
+if (do_local_heating) then !mj local heating
+   allocate(deg_lon(is:ie))
+   allocate(deg_lat(js:je))
+   call get_deg_lon(deg_lon)
+   call get_deg_lat(deg_lat)
+endif
 
 call get_surf_geopotential(z_surf)
 z_surf = z_surf/grav
@@ -513,7 +525,7 @@ if(trim(land_option) .eq. 'input')then
 
 elseif(trim(land_option) .eq. 'zsurf')then
 	!s wherever zsurf is greater than some threshold height then make land = .true.
-	where ( z_surf > 10. ) land = .true.
+	where ( z_surf > 100. ) land = .true.
 endif
 
 
@@ -693,6 +705,9 @@ if(two_stream_gray) call two_stream_gray_rad_init(is, ie, js, je, num_levels, ge
             axes(1:3), Time, 'temperature interp','T/s')
     endif
 #endif
+
+!mj local heating
+if (do_local_heating) call local_heating_init(axes,Time)
 
 if(turb) then
    call vert_turb_driver_init (rad_lonb_2d, rad_latb_2d, ie-is+1,je-js+1, &
@@ -991,7 +1006,10 @@ if(do_rrtm_radiation) then
 endif
 #endif
 
-
+!mj local heating
+if (do_local_heating) then
+   call local_heating(is,js,Time,deg_lon,deg_lat,p_full(:,:,:,current),dt_tg(:,:,:))
+endif
 
 if(gp_surface) then
 
