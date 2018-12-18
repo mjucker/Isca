@@ -12,6 +12,10 @@ try:
 except Exception as e:
     log.error('Environment variables GFDL_BASE, GFDL_WORK, GFDL_DATA must be set')
     raise ValueError('Environment variables GFDL_BASE, GFDL_WORK, GFDL_DATA must be set')
+try:
+    GFDL_INPUTS      = os.environ['GFDL_INPUTS']
+except Exception as e:
+    log.info('Evnironment variable GFDL_INPUTS not found')
 
 # GFDL_ENV: The environment on which the model is being run.
 # Primarily, this determines which compilers and libraries are to be used

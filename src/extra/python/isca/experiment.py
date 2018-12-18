@@ -224,7 +224,10 @@ class Experiment(Logger, EventEmitter):
         self.write_diag_table(self.rundir)
 
         for filename in self.inputfiles:
-            sh.cp([filename, P(indir, os.path.split(filename)[1])])
+            if os.path.isfile(filename):
+                sh.cp([filename, P(indir, os.path.split(filename)[1])])
+            else:
+                sh.cp(['-dr',filename,P(indir, os.path.split(filename)[1])])
 
         if multi_node:
             mpirun_opts += ' -bootstrap pbsdsh -f $PBS_NODEFILE'
