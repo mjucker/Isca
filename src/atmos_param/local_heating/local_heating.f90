@@ -18,7 +18,7 @@ module local_heating_mod
 
   use  field_manager_mod, only: MODEL_ATMOS, parse
 
-  use constants_mod, only   : RADIAN,PI
+  use constants_mod, only   : RADIAN,PI,SECONDS_PER_DAY
 
 #ifdef RRTM_NO_COMPILE
     ! RRTM_NO_COMPILE not included
@@ -80,7 +80,7 @@ module local_heating_mod
   ! local variables
   real,dimension(ngauss) :: logpc
   integer                :: daysperyear
-  logical                :: do_3d_heating
+  logical                :: do_3d_heating,do_surface_heating
   
 contains
   
@@ -108,33 +108,35 @@ contains
     call get_time(length_of_year(),seconds,daysperyear)
     do_3d_heating = .false.
     do n = 1,ngauss
-       pcenter(n)   = pcenter(n)*100      ! convert hPa to Pa
+       pcenter(n)   = pcenter(n)*100                    ! convert hPa to Pa
        if ( pcenter(n) .gt. 0.0 ) do_3d_heating = .true.
-       hamp(n)      = hamp(n)/86400.      ! convert K/d to K/s
-       loncenter(n) = loncenter(n)/RADIAN ! convert degrees to radians
-       lonwidth(n)  = lonwidth(n)/RADIAN  ! convert degrees to radians
-       lonmove(n)   = lonmove(n)/RADIAN/86400. ! convert degrees/day to radians/s
-       latcenter(n) = latcenter(n)/RADIAN ! convert degrees to radians
-       latwidth(n)  = latwidth(n)/RADIAN  ! convert degrees to radians
-       latmove(n)   = latmove(n)/RADIAN/86400. ! convert degrees/day to radians/s
-       pmove(n)     = pmove(n)*100./86400.! convert hPa/day to Pa/s
+       hamp(n)      = hamp(n)/SECONDS_PER_DAY           ! convert K/d to K/s
+       loncenter(n) = loncenter(n)/RADIAN               ! convert degrees to radians
+       lonwidth(n)  = lonwidth(n)/RADIAN                ! convert degrees to radians
+       lonmove(n)   = lonmove(n)/RADIAN/SECONDS_PER_DAY ! convert degrees/day to radians/s
+       latcenter(n) = latcenter(n)/RADIAN               ! convert degrees to radians
+       latwidth(n)  = latwidth(n)/RADIAN                ! convert degrees to radians
+       latmove(n)   = latmove(n)/RADIAN/SECONDS_PER_DAY ! convert degrees/day to radians/s
+       pmove(n)     = pmove(n)*100./SECONDS_PER_DAY     ! convert hPa/day to Pa/s
        if ( tperiod(n) .lt. 0.0 ) tperiod(n) = -tperiod(n)*daysperyear ! convert year fraction to day of year
-       twidth(n)    = twidth(n)*86400     ! convert to seconds
-       tphase(n)    = tphase(n)*86400     ! convert to seconds
-       tperiod(n)   = tperiod(n)*86400    ! convert to seconds
+       twidth(n)    = twidth(n)*SECONDS_PER_DAY         ! convert to seconds
+       tphase(n)    = tphase(n)*SECONDS_PER_DAY         ! convert to seconds
+       tperiod(n)   = tperiod(n)*SECONDS_PER_DAY        ! convert to seconds
     enddo
   !----
   !------------ initialize diagnostic fields ---------------
     ! only needed if we actually do 3D heating
     if ( do_3d_heating ) then
+       do_surface_heating = .false.
        id_tdt_lheat = &
          register_diag_field ( mod_name, 'tdt_lheat', axes(1:3), Time, &
          'Temperature tendency due to local heating', &
          'K/s', missing_value=missing_value               )
     else
+       do_surface_heating = .true.
        id_tdt_lheat = 0
     endif
-    
+
   end subroutine local_heating_init
     
   !-----------------------------------------------------------------------
@@ -211,9 +213,10 @@ contains
     real    :: tcent(3),t_factor,targ,halfper
     real, dimension(size(lon,1),size(lat,1)) :: lon_factor,lat_factor
     logical :: do_horiz
+    real    :: thislon,thislat
     
     call get_time(Time,seconds,days)
-    fullseconds = days*86400+seconds
+    fullseconds = days*SECONDS_PER_DAY+seconds
 
     horiz_tdt = 0.0
     if ( present(tcenter) )then
@@ -231,7 +234,7 @@ contains
              if ( pcenter(n) .gt. 0.0 ) then
                 do_horiz = .true.
              endif
-          elseif ( pcenter(n) .lt. 0.0 ) then ! calling from simple_surface
+          elseif ( pcenter(n) .lt. 0.0 ) then ! calling from mixed_layer
              do_horiz = .true.
           endif
        endif
@@ -261,18 +264,20 @@ contains
           endif
           ! meridional and zonal components
           do j = 1,size(lat,1)
+             thislat = lat(j)/RADIAN
              do i = 1,size(lon,1)
+                thislon = lon(i)/RADIAN
                 if ( loncenter(n) .ge. 0.0 ) then
-                   lon_factor(i,j) = exp( -(lon(i)-tcent(1))**2/(2*(lonwidth(n))**2) )
+                   lon_factor(i,j) = exp( -(thislon-tcent(1))**2/(2*(lonwidth(n))**2) )
                    ! there is a problem when the heating is close to 360/0
                    lon_factor(i,j) = max(lon_factor(i,j), \
-                                     exp( -(lon(i)+2*PI-tcent(1))**2/(2*(lonwidth(n))**2) ) )
+                                     exp( -(thislon+2*PI-tcent(1))**2/(2*(lonwidth(n))**2) ) )
                    lon_factor(i,j) = max(lon_factor(i,j), \
-                                     exp( -(lon(i)-2*PI-tcent(1))**2/(2*(lonwidth(n))**2) ) )
+                                     exp( -(thislon-2*PI-tcent(1))**2/(2*(lonwidth(n))**2) ) )
                 else
                    lon_factor(i,j) = 1.0
                 endif
-                lat_factor(i,j) = exp( -(lat(j)-tcent(2))**2/(2*(latwidth(n))**2) )
+                lat_factor(i,j) = exp( -(thislat-tcent(2))**2/(2*(latwidth(n))**2) )
              enddo
           enddo
           horiz_tdt = horiz_tdt + hamp(n)*t_factor*lon_factor*lat_factor

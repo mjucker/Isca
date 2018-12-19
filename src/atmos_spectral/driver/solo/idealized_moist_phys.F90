@@ -66,7 +66,7 @@ use rayleigh_bottom_drag_mod, only: rayleigh_bottom_drag_init, compute_rayleigh_
     use rrtm_vars
 #endif
 
-use local_heating_mod, only: local_heating_init,local_heating
+use local_heating_mod, only: local_heating_init,local_heating,do_3d_heating
 
 implicit none
 private
@@ -487,10 +487,13 @@ allocate(p_half_1d(num_levels+1), ln_p_half_1d(num_levels+1))
 allocate(p_full_1d(num_levels  ), ln_p_full_1d(num_levels  ))
 allocate(capeflag     (is:ie, js:je))
 if (do_local_heating) then !mj local heating
-   allocate(deg_lon(is:ie))
-   allocate(deg_lat(js:je))
-   call get_deg_lon(deg_lon)
-   call get_deg_lat(deg_lat)
+   call local_heating_init(axes,Time)
+   if (do_3d_heating) then
+      allocate(deg_lon(is:ie))
+      allocate(deg_lat(js:je))
+      call get_deg_lon(deg_lon)
+      call get_deg_lat(deg_lat)
+   endif
 endif
 
 call get_surf_geopotential(z_surf)
@@ -706,8 +709,6 @@ if(two_stream_gray) call two_stream_gray_rad_init(is, ie, js, je, num_levels, ge
     endif
 #endif
 
-!mj local heating
-if (do_local_heating) call local_heating_init(axes,Time)
 
 if(turb) then
    call vert_turb_driver_init (rad_lonb_2d, rad_latb_2d, ie-is+1,je-js+1, &
@@ -1007,7 +1008,7 @@ endif
 #endif
 
 !mj local heating
-if (do_local_heating) then
+if (do_3d_heating) then
    call local_heating(is,js,Time,deg_lon,deg_lat,p_full(:,:,:,current),dt_tg(:,:,:))
 endif
 

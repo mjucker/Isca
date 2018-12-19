@@ -57,7 +57,7 @@ use interpolator_mod, only: interpolate_type,interpolator_init&
 !mj q-flux
 use qflux_mod, only: qflux_init,qflux,warmpool
 !mj local surface heating
-use local_heating_mod, only: horizontal_heating
+use local_heating_mod, only: horizontal_heating,do_surface_heating
 
 implicit none
 private
@@ -113,7 +113,6 @@ logical :: specify_sst_over_ocean_only = .false.
 character(len=256) :: sst_file
 character(len=256) :: land_option = 'none'
 real,dimension(10) :: slandlon=0,slandlat=0,elandlon=-1,elandlat=-1
-logical :: do_surface_heating = .false. !mj local heating source
 !s End mj extra options
 
 character(len=256) :: qflux_file_name  = 'ocean_qflux'
@@ -163,7 +162,8 @@ integer ::                                                                    &
      id_heat_cap,          &   ! heat capacity
      id_albedo,            &   ! mj albedo
      id_ice_conc,          &   ! st ice concentration
-     id_delta_t_surf
+     id_delta_t_surf,      &   
+     id_horiz_heating          ! mj local heating
 
 real, allocatable, dimension(:,:)   ::                                        &
      ocean_qflux,           &   ! Q-flux
@@ -286,7 +286,7 @@ allocate(zsurf                   (is:ie, js:je))
 allocate(sst_new                 (is:ie, js:je))
 allocate(land_mask                 (is:ie, js:je)); land_mask=land
 !mj local heating
-if (do_surface_heating) then
+if (do_surface_heating) then 
    allocate(horiz_heat(is:ie, js:je))
 endif
 !
@@ -364,6 +364,8 @@ id_heat_cap = register_static_field(mod_name, 'ml_heat_cap',        &
                                  axes(1:2), 'mixed layer heat capacity','joules/m^2/deg C')
 id_delta_t_surf = register_diag_field(mod_name, 'delta_t_surf',        &
                                  axes(1:2), Time, 'change in sst','K')
+id_horiz_heating = register_diag_field(mod_name, 'tdt_surf',        &
+                                 axes(1:2), Time, 'surface heating','K/s')
 if (update_albedo_from_ice) then
 	id_albedo = register_diag_field(mod_name, 'albedo',    &
                                  axes(1:2), Time, 'surface albedo', 'none')
@@ -716,6 +718,7 @@ if(id_flux_lhe > 0) used = send_data(id_flux_lhe, HLV * flux_q_total, Time_next)
 if(id_flux_oceanq > 0)   used = send_data(id_flux_oceanq, ocean_qflux, Time_next)
 
 if(id_delta_t_surf > 0)   used = send_data(id_delta_t_surf, delta_t_surf, Time_next)
+if(id_horiz_heating > 0)  used = send_data(id_horiz_heating,horiz_heat  , Time_next)
 
 end subroutine mixed_layer
 
