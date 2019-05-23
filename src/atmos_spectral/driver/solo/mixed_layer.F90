@@ -77,8 +77,6 @@ public :: mixed_layer_init, mixed_layer, mixed_layer_end, albedo_calc
 !=================================================================================================================================
 
 logical :: evaporation = .true.
-real    :: qflux_amp = 0.0
-real    :: qflux_width = 16.0  ! width of qflux region in degrees
 logical :: load_qflux = .false.
 logical :: time_varying_qflux = .false.
 real    :: tconst = 305.0
@@ -97,8 +95,7 @@ real    :: depth           = 40.0,         & !s 2013 implementation
            albedo_cntr     = 45.,          & !mj
            albedo_wdth     = 10.,          & !mj
            higher_albedo   = 0.10,         & !mj
-           lat_glacier     = 60.,          & !mj
-           land_h_capacity_prefactor = 1.0 !s where(land) heat_capcity = land_h_capacity_prefactor * depth * rho_cp
+           lat_glacier     = 60.             !mj
 
 !s Surface albedo options
 real    :: land_albedo_prefactor = 1.0 !s where(land) albedo = land_albedo_prefactor * albedo_value
@@ -127,7 +124,7 @@ logical :: add_latent_heat_flux_anom = .false.
 character(len=256) :: flux_lhe_anom_file_name  = 'INPUT/flux_lhe_anom.nc'
 character(len=256) :: flux_lhe_anom_field_name = 'flux_lhe_anom'
 
-namelist/mixed_layer_nml/ evaporation, depth, qflux_amp, qflux_width, tconst,&
+namelist/mixed_layer_nml/ evaporation, depth,  tconst,&
                               delta_T, prescribe_initial_dist,albedo_value,  &
                               land_depth,trop_depth,                         &  !mj
                               trop_cap_limit, heat_cap_limit, np_cap_factor, &  !mj
@@ -137,7 +134,6 @@ namelist/mixed_layer_nml/ evaporation, depth, qflux_amp, qflux_width, tconst,&
                               do_read_sst,do_sc_sst,sst_file,                &  !mj
                               land_option,slandlon,slandlat,                 &  !mj
                               elandlon,elandlat,                             &  !mj
-                              land_h_capacity_prefactor,                     &  !s
                               land_albedo_prefactor,                         &  !s
                               load_qflux,qflux_file_name,time_varying_qflux, &
                               update_albedo_from_ice, ice_file_name,         &
@@ -491,7 +487,7 @@ endif
 !s begin surface heat capacity calculation
    if(.not.do_sc_sst.or.(do_sc_sst.and.specify_sst_over_ocean_only)) then
          land_sea_heat_capacity = depth*RHO_CP
-	if(trim(land_option) .ne. 'input') then
+	!if(trim(land_option) .ne. 'input') then
          if ( trop_capacity .ne. depth*RHO_CP .or. np_cap_factor .ne. 1. ) then !s Lines above make trop_capacity=depth*RHO_CP if trop_capacity set to be < 0.
             do j=js,je
 	       lat = deg_lat(j)
@@ -512,7 +508,7 @@ endif
 ! mj land heat capacity function of surface topography
          if(trim(land_option) .eq. 'zsurf')then
             call get_surf_geopotential(zsurf)
-            where ( zsurf .gt. 10. ) land_sea_heat_capacity = land_capacity
+            where ( zsurf .gt. 100. ) land_sea_heat_capacity = land_capacity
          endif
 ! mj land heat capacity given through ?landlon, ?landlat
          if(trim(land_option) .eq. 'lonlat')then
@@ -529,8 +525,8 @@ endif
                enddo
             enddo
          endif
-	else  !trim(land_option) .eq. 'input'
-		where(land) land_sea_heat_capacity = land_h_capacity_prefactor*land_sea_heat_capacity
+	if(trim(land_option) .eq. 'input')then
+		where(land) land_sea_heat_capacity = land_capacity
 	endif !end of if (trim(land_option) .ne. 'input')
     endif !end of if(.not.do_sc_sst)
 
