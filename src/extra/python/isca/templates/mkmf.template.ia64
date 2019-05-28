@@ -3,6 +3,8 @@
 # mkmf -t template.ifc -c"-Duse_libMPI -Duse_netCDF" path_names /usr/local/include
 CPPFLAGS = -I/usr/local/include
 NETCDF_LIBS = `nc-config --flibs`
+MPI_INC := $(shell mpif90 -showme:compiler)
+LIB_MPI := -L${OMPI_F90LIBS} $(shell mpif90 -showme:link)
 
 # FFLAGS:
 #  -fpp: Use the fortran preprocessor
@@ -18,10 +20,10 @@ NETCDF_LIBS = `nc-config --flibs`
 #  -diag-disable 6843:
 #       This suppresses the warning: `warning #6843: A dummy argument with an explicit INTENT(OUT) declaration is not given an explicit value.` of which
 #       there are a lot of instances in the GFDL codebase.
-FFLAGS = $(CPPFLAGS) -fpp -stack_temps -safe_cray_ptr -ftz -assume byterecl -shared-intel -i4 -r8 -g -O2 -diag-disable 6843
+FFLAGS = $(CPPFLAGS) -fpp -stack_temps -safe_cray_ptr -ftz -assume byterecl -shared-intel -i4 -r8 -g -O2 -diag-disable 6843 $(MPI_INC)
 #FFLAGS = $(CPPFLAGS) -fltconsistency -stack_temps -safe_cray_ptr -ftz -shared-intel -assume byterecl -g -O0 -i4 -r8 -check -warn -warn noerrors -debug variable_locations -inline_debug_info -traceback
 FC = $(F90)
-LD = $(F90) -L$(LD_LIBRARY_PATH) $(NETCDF_LIBS)
+LD = $(F90) -L$(LD_LIBRARY_PATH) $(NETCDF_LIBS) $(LIB_MPI)
 #CC = mpicc
 
 LDFLAGS = -lnetcdff -lnetcdf -lmpi -shared-intel
