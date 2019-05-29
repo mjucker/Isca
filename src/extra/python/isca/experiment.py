@@ -15,6 +15,7 @@ from isca import GFDL_WORK, GFDL_DATA, GFDL_BASE, _module_directory, get_env_fil
 from isca.diagtable import DiagTable
 from isca.loghandler import Logger, clean_log_debug
 from isca.helpers import destructive, useworkdir, mkdir
+from isca.util import interpolate_output
 
 P = os.path.join
 
@@ -190,7 +191,7 @@ class Experiment(Logger, EventEmitter):
 
     @destructive
     @useworkdir
-    def run(self, i, restart_file=None, use_restart=True, multi_node=False, num_cores=8, overwrite_data=False, save_run=False, run_idb=False, nice_score=0, mpirun_opts=''):
+    def run(self, i, restart_file=None, use_restart=True, multi_node=False, num_cores=8, overwrite_data=False, save_run=False, run_idb=False, nice_score=0, mpirun_opts='', interp_plev=None, p_levels="input"):
         """Run the model.0
             `num_cores`: Number of mpi cores to distribute over.
             `restart_file` (optional): A path to a valid restart archive.  If None and `use_restart=True`,
@@ -198,6 +199,8 @@ class Experiment(Logger, EventEmitter):
             `save_run`:  If True, copy the entire working directory over to GFDL_DATA
                          so that the run can rerun without the python script.
                          (This uses a lot of data storage!)
+            `interp_plev`: If not None, a list of output file names which should be plevel_interpolated.
+            `p_levels` : If `interp_plev` is not None, interpolate onto these levels. See util.interpolate_output for options.
 
         """
 
@@ -224,7 +227,10 @@ class Experiment(Logger, EventEmitter):
         self.write_diag_table(self.rundir)
 
         for filename in self.inputfiles:
-            sh.cp([filename, P(indir, os.path.split(filename)[1])])
+            if os.path.isfile(filename):
+                sh.cp([filename, P(indir, os.path.split(filename)[1])])
+            else:
+                sh.cp(['-dr',filename,P(indir, os.path.split(filename)[1])])
 
         if multi_node:
             mpirun_opts += ' -bootstrap pbsdsh -f $PBS_NODEFILE'
@@ -249,6 +255,7 @@ class Experiment(Logger, EventEmitter):
             self.log.info('Running without restart file')
             restart_file = None
 
+        isca_out = 'out.{0:04d}.txt'.format(i)
         vars = {
             'rundir': self.rundir,
             'execdir': self.codebase.builddir,
@@ -256,6 +263,7 @@ class Experiment(Logger, EventEmitter):
             'env_source': self.env_source,
             'mpirun_opts': mpirun_opts,
             'num_cores': num_cores,
+            'outfile': isca_out,
             'run_idb': run_idb,
             'nice_score': nice_score
         }
@@ -307,25 +315,25 @@ class Experiment(Logger, EventEmitter):
                 netcdf_file = '%s.nc' % file
                 filebase = P(self.rundir, netcdf_file)
                 combinetool(self.codebase.builddir, filebase)
-                # copy the combined netcdf file into the data archive directory
-                sh.cp(filebase, P(outdir, netcdf_file))
-                # remove all netcdf fragments from the run directory
-                sh.rm(glob.glob(filebase+'*'))
-                self.log.debug('%s combined and copied to data directory' % netcdf_file)
-
+                if interp_plev is not None and netcdf_file in interp_plev:
+                    interpolate_output(filebase,P(outdir, netcdf_file),p_levs=p_levels)
+                    self.log.debug('%s combined, interpolated and copied to data directory' % netcdf_file)
+                else:
+                    self.log.debug('%s combined' % netcdf_file)
             for restart in glob.glob(P(resdir, '*.res.nc.0000')):
                 restartfile = restart.replace('.0000', '')
                 combinetool(self.codebase.builddir, restartfile)
                 sh.rm(glob.glob(restartfile+'.????'))
                 self.log.debug("Restart file %s combined" % restartfile)
             self.emit('run:combined', self, i)
-        else:
-            for file in self.diag_table.files:
-                netcdf_file = '%s.nc' % file
-                filebase = P(self.rundir, netcdf_file)
-                sh.cp(filebase, P(outdir, netcdf_file))
-                sh.rm(glob.glob(filebase+'*'))
-                self.log.debug('%s copied to data directory' % netcdf_file)
+        for file in self.diag_table.files:
+            netcdf_file = '%s.nc' % file
+            if interp_plev is not None and netcdf_file in interp_plev:
+                continue
+            filebase = P(self.rundir, netcdf_file)
+            sh.cp(filebase, P(outdir, netcdf_file))
+            sh.rm(glob.glob(filebase+'*'))
+            self.log.debug('%s copied to data directory' % netcdf_file)
 
         # make the restart archive and delete the restart files
         self.make_restart_archive(self.get_restart_file(i), resdir)
@@ -342,6 +350,7 @@ class Experiment(Logger, EventEmitter):
             self.write_field_table(outdir)
             self.write_diag_table(outdir)
             self.codebase.write_source_control_status(P(outdir, 'git_hash_used.txt'))
+            sh.cp([P(self.rundir, isca_out),P(outdir, isca_out)])
 
         self.clear_rundir()
         self.emit('run:finished', self, i)
