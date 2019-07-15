@@ -505,7 +505,7 @@ endif
             where ( zsurf .gt. 100. ) land_sea_heat_capacity = land_capacity
          endif
 ! mj land heat capacity given through ?landlon, ?landlat
-         if(trim(land_option) .eq. 'lonlat')then
+         if(trim(land_option) .eq. 'lonlat' .and. land_depth .gt. 0. )then
             do j=js,je
 	       lat = deg_lat(j)
                do i=is,ie
@@ -519,7 +519,7 @@ endif
                enddo
             enddo
          endif
-	if(trim(land_option) .eq. 'input')then
+	if(trim(land_option) .eq. 'input' .and. land_depth .gt. 0. )then
 		where(land) land_sea_heat_capacity = land_capacity
 	endif !end of if (trim(land_option) .ne. 'input')
     endif !end of if(.not.do_sc_sst)
